@@ -1,0 +1,7 @@
+.env
+venv/
+.venv/
+__pycache__/
+.questora_cache/
+.qodo/
+*.pyc
