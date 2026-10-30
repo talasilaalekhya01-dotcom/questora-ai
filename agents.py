@@ -650,6 +650,11 @@ def search_openalex(
 ) -> List[Dict[str, Any]]:
     topic = _safe_text(topic)
 
+    research_issue = _safe_text(research_issue)
+    research_questions = _safe_text(research_questions)
+    research_requirements = _safe_text(research_requirements)
+    research_notes = _safe_text(research_notes)
+
     if not topic:
         raise ValueError(
             "Research topic cannot be empty."
@@ -1635,90 +1640,102 @@ def create_llm(
 def create_agents(
     llm: LLM,
 ):
-    # --------------------------------------------------------
-    # AGENT 01 - RESEARCH AGENT
-    # --------------------------------------------------------
+    """Create Questora's six specialized research agents."""
 
     research_agent = Agent(
         role="Research Agent",
         goal=(
-            "Build an accurate, structured understanding of the user's "
-            "research topic without inventing sources, statistics, or "
-            "experimental results."
+            "Frame the user's research topic, stated problem, questions, scope, and "
+            "background using careful academic reasoning without inventing evidence."
         ),
         backstory=(
-            "You are Questora AI's research strategist. You map concepts, "
-            "context, methods, applications, limitations, research gaps, "
-            "and future directions. When a factual claim depends on "
-            "literature, you rely on the supplied academic evidence and "
-            "clearly identify uncertainty."
+            "You are Questora AI's research strategist. You translate the user's topic, "
+            "problem statement, questions, requirements, and notes into a rigorous research "
+            "foundation. Claims that depend on literature must remain tied to supplied evidence."
         ),
         llm=llm,
         verbose=True,
         allow_delegation=False,
     )
-
-    # --------------------------------------------------------
-    # AGENT 02 - PDF READER AGENT
-    # --------------------------------------------------------
 
     pdf_reader_agent = Agent(
         role="PDF Reader Agent",
         goal=(
-            "Read only the full-text academic PDF content actually extracted "
-            "by Questora and identify useful evidence, methods, findings, "
-            "limitations, and research details."
+            "Read only full-text academic PDF content actually extracted by Questora and "
+            "identify objectives, methods, findings, limitations, and author-stated future work."
         ),
         backstory=(
-            "You are Questora AI's full-text reading specialist. You never "
-            "claim to have read a paper unless extracted PDF text is explicitly "
-            "supplied. You do not fill missing sections from memory or invent "
-            "quotations."
+            "You are Questora AI's full-text reading specialist. You never claim to have read "
+            "a paper unless extracted PDF text is supplied, and you never fill missing sections "
+            "from memory or invent quotations, results, or statistics."
         ),
         llm=llm,
         verbose=True,
         allow_delegation=False,
     )
-
-    # --------------------------------------------------------
-    # AGENT 03 - ACADEMIC PAPER ANALYSIS AGENT
-    # --------------------------------------------------------
 
     paper_analysis_agent = Agent(
         role="Academic Paper Analysis Agent",
         goal=(
-            "Analyze the real retrieved academic papers and verified full-text "
-            "evidence while clearly separating metadata-only observations "
-            "from full-text findings."
+            "Compare verified academic metadata and verified full-text evidence to identify "
+            "themes, methods, findings, limitations, disagreements, and evidence quality."
         ),
         backstory=(
-            "You are Questora AI's evidence analyst. You compare papers, "
-            "identify themes, methods, strengths, limitations, gaps, and "
-            "disagreements. Every title, author, DOI, citation count, "
-            "publication year, and source must come from the supplied verified "
-            "academic metadata."
+            "You are Questora AI's evidence analyst. Every paper title, author, DOI, year, "
+            "source, and citation count must come from supplied verified metadata. Metadata-only "
+            "papers must never be described as though their full text was read."
         ),
         llm=llm,
         verbose=True,
         allow_delegation=False,
     )
 
-    # --------------------------------------------------------
-    # AGENT 04 - REPORT AGENT
-    # --------------------------------------------------------
-
-    report_agent = Agent(
-        role="Report Agent",
+    research_gap_agent = Agent(
+        role="Research Gap Agent",
         goal=(
-            "Create a clear, professional, evidence-grounded research report "
-            "using only the supplied topic analysis, verified metadata, and "
-            "verified PDF evidence."
+            "Identify defensible research gaps from the supplied literature, prioritizing gaps "
+            "that are evidence-supported, relevant to the user's stated issue/questions, and "
+            "feasible for a new study."
         ),
         backstory=(
-            "You are Questora AI's final research writer. Your job is to turn "
-            "the research pipeline into a useful report while preserving "
-            "source integrity. You never invent references and never describe "
-            "metadata-only papers as full-text analyzed papers."
+            "You are Questora AI's gap-discovery specialist. You distinguish an actual literature "
+            "gap from a mere idea. A gap must be traceable to limitations, unresolved questions, "
+            "conflicting findings, narrow scope, missing evaluation, missing data, or explicit "
+            "future-work signals in the supplied evidence. You never claim novelty with certainty."
+        ),
+        llm=llm,
+        verbose=True,
+        allow_delegation=False,
+    )
+
+    research_design_agent = Agent(
+        role="Research Design Agent",
+        goal=(
+            "Turn the strongest evidence-supported gap into a realistic new research design with "
+            "a problem statement, research questions, objectives, methodology, architecture or "
+            "procedure, data plan, evaluation metrics, risks, ethics, and validation strategy."
+        ),
+        backstory=(
+            "You are Questora AI's research-methodology designer. You propose work that could be "
+            "performed; you never report proposed experiments or expected outcomes as completed "
+            "or proven. You respect the user's constraints and clearly label assumptions."
+        ),
+        llm=llm,
+        verbose=True,
+        allow_delegation=False,
+    )
+
+    report_agent = Agent(
+        role="Report / Paper Agent",
+        goal=(
+            "Create a clean evidence-grounded research-paper draft that integrates the literature, "
+            "identified gap, and proposed research design while separating established evidence "
+            "from proposed work and expected outcomes."
+        ),
+        backstory=(
+            "You are Questora AI's academic writer. You preserve source integrity, never invent "
+            "references or results, and explicitly label proposed methodology, hypotheses, and "
+            "expected contributions as proposed rather than completed findings."
         ),
         llm=llm,
         verbose=True,
@@ -1729,6 +1746,8 @@ def create_agents(
         research_agent,
         pdf_reader_agent,
         paper_analysis_agent,
+        research_gap_agent,
+        research_design_agent,
         report_agent,
     )
 
@@ -1736,6 +1755,29 @@ def create_agents(
 # ============================================================
 # TASKS
 # ============================================================
+
+
+def _research_brief_text(
+    research_issue: str = "",
+    research_questions: str = "",
+    research_requirements: str = "",
+    research_notes: str = "",
+) -> str:
+    return f"""
+USER RESEARCH BRIEF
+
+Research issue / problem:
+{research_issue or 'Not provided'}
+
+Research questions:
+{research_questions or 'Not provided'}
+
+Requirements / constraints:
+{research_requirements or 'Not provided'}
+
+Additional notes:
+{research_notes or 'Not provided'}
+""".strip()
 
 
 def create_tasks(
@@ -1746,215 +1788,244 @@ def create_tasks(
     research_agent: Agent,
     pdf_reader_agent: Agent,
     paper_analysis_agent: Agent,
+    research_gap_agent: Agent,
+    research_design_agent: Agent,
     report_agent: Agent,
+    research_issue: str = "",
+    research_questions: str = "",
+    research_requirements: str = "",
+    research_notes: str = "",
 ):
-    # --------------------------------------------------------
-    # TASK 01 - TOPIC FOUNDATION
-    # --------------------------------------------------------
+    brief = _research_brief_text(
+        research_issue,
+        research_questions,
+        research_requirements,
+        research_notes,
+    )
 
     research_task = Task(
         description=f"""
 RESEARCH TOPIC:
-
 {topic}
 
 OUTPUT LANGUAGE:
-
 {language}
 
-Develop a structured research foundation covering:
+{brief}
 
-1. Topic overview
-2. Background
-3. Core concepts
-4. Technologies / architecture / methodology
-5. How it works
-6. Current approaches
-7. Applications
-8. Advantages
-9. Challenges and limitations
-10. Research gaps
-11. Future directions
-12. Suggested research questions
+Build a rigorous research foundation covering:
+1. Topic overview and background
+2. User-stated problem and why it matters
+3. Core concepts and terminology
+4. Existing approaches / technologies / methods
+5. Scope implied by the user's requirements
+6. Challenges and known limitations
+7. How the user's research questions map to the topic
+8. What evidence will be needed to answer those questions
+9. Initial candidate research directions
 
 STRICT RULES:
-
-- Do not invent academic papers.
-- Do not invent authors, DOI numbers, citation counts, statistics, or experiments.
-- Do not present uncertain information as verified evidence.
-- Use professional academic language.
+- Do not invent academic papers, facts, statistics, experiments, or results.
+- Do not treat the user's assumptions as established facts.
+- Clearly label uncertainty and proposed ideas.
 - Write in {language}.
 """,
-        expected_output=(
-            "A structured research foundation for the topic."
-        ),
+        expected_output="A structured research foundation aligned with the user's research brief.",
         agent=research_agent,
     )
 
-    # --------------------------------------------------------
-    # TASK 02 - VERIFIED FULL-TEXT READING
-    # --------------------------------------------------------
-
     pdf_reader_task = Task(
         description=f"""
-You are given ONLY the academic PDF text that Questora successfully extracted.
-
 RESEARCH TOPIC:
-
 {topic}
 
-VERIFIED FULL-TEXT INPUT:
+{brief}
 
+VERIFIED FULL-TEXT INPUT:
 ============================================================
 {full_text_text}
 ============================================================
 
-For each supplied full-text paper, identify:
-
+For each supplied full-text paper identify, only when supported by extracted text:
 1. Research objective
 2. Method / approach
 3. Important findings
-4. Useful evidence for the topic
-5. Limitations stated or visible in the supplied text
-6. Relevant concepts / terminology
-7. What this paper contributes to the user's research question
+4. Limitations
+5. Author-stated future work or unresolved issues
+6. Evidence relevant to the user's research issue/questions
+7. What the paper does NOT establish
 
 STRICT RULES:
-
-- Analyze ONLY text supplied above.
-- If no full-text PDF is supplied, explicitly say no full-text analysis was possible.
-- Never invent missing sections, results, tables, quotations, statistics, or conclusions.
-- Do not claim a paper was read in full if it is not included above.
+- Analyze only supplied extracted text.
+- If no full text is supplied, say so explicitly.
+- Never invent results, quotations, sample sizes, tables, or conclusions.
 - Write in {language}.
 """,
-        expected_output=(
-            "A verified full-text evidence analysis, or a clear statement "
-            "that no full-text PDF was available."
-        ),
+        expected_output="Verified full-text evidence and limitations for the user's research problem.",
         agent=pdf_reader_agent,
     )
-
-    # --------------------------------------------------------
-    # TASK 03 - ACADEMIC PAPER ANALYSIS
-    # --------------------------------------------------------
 
     paper_analysis_task = Task(
         description=f"""
 RESEARCH TOPIC:
-
 {topic}
 
-VERIFIED ACADEMIC PAPER METADATA:
+{brief}
 
+VERIFIED ACADEMIC PAPER METADATA:
 ============================================================
 {papers_text}
 ============================================================
 
-Analyze the supplied papers and the PDF Reader Agent's verified findings.
-
-Create these sections:
-
-1. Most relevant retrieved papers
-2. Common themes
-3. Methods / approaches represented
-4. Highly cited retrieved papers
-5. Open-access papers
-6. Full-text-analyzed papers
-7. Metadata-only papers
-8. Agreements and differences across the evidence
-9. Research gaps
-10. Papers that may deserve deeper reading
+Compare the supplied metadata with verified PDF Reader findings. Cover:
+1. Most relevant papers
+2. Common themes and approaches
+3. Methods represented
+4. Full-text evidence vs metadata-only records
+5. Agreements and disagreements
+6. Repeated limitations
+7. Missing populations, datasets, metrics, settings, comparisons, or validation
+8. Evidence relevant to each user research question
+9. Papers that deserve deeper reading
 
 STRICT RULES:
-
-- Every paper title, author, DOI, year, source, and citation count must come from the supplied metadata.
-- Do not invent papers or publication details.
-- Metadata-only papers may be discussed only at the metadata level.
-- Only treat papers marked Full Text Read by Questora: Yes as full-text analyzed.
-- Do not create fake quotations.
+- Bibliographic facts must come only from supplied metadata.
+- Metadata-only papers cannot support detailed claims about methods/findings unless that detail is explicitly present in supplied evidence.
+- Never invent publication details or quotations.
 - Write in {language}.
 """,
-        expected_output=(
-            "An evidence analysis that explicitly separates metadata-only "
-            "and verified full-text evidence."
-        ),
+        expected_output="A comparative literature analysis with explicit evidence boundaries.",
         agent=paper_analysis_agent,
-        context=[
-            research_task,
-            pdf_reader_task,
-        ],
+        context=[research_task, pdf_reader_task],
     )
 
-    # --------------------------------------------------------
-    # TASK 04 - FINAL REPORT
-    # --------------------------------------------------------
+    research_gap_task = Task(
+        description=f"""
+RESEARCH TOPIC:
+{topic}
+
+{brief}
+
+Using the Research Agent, PDF Reader Agent, and Paper Analysis Agent outputs, identify research gaps.
+
+For each candidate gap provide:
+1. Gap statement
+2. Evidence that supports calling it a gap
+3. Which retrieved papers/verified findings point to it
+4. Why it matters to the user's problem/questions
+5. Gap type: limitation / unresolved question / conflicting evidence / narrow scope / missing evaluation / missing data / missing comparison / future work
+6. Confidence: High / Medium / Low, based only on supplied evidence
+7. Feasibility for a student/research project
+8. What additional verification would still be needed
+
+Then rank the top 3 gaps and select ONE primary gap for the proposed study.
+
+STRICT RULES:
+- Do not claim a gap merely because an idea sounds new.
+- Do not claim worldwide novelty.
+- A gap must be traceable to supplied evidence.
+- If evidence is too weak, explicitly say the gap is provisional.
+- Write in {language}.
+""",
+        expected_output="A ranked, evidence-supported research-gap analysis with one primary gap selected.",
+        agent=research_gap_agent,
+        context=[research_task, pdf_reader_task, paper_analysis_task],
+    )
+
+    research_design_task = Task(
+        description=f"""
+RESEARCH TOPIC:
+{topic}
+
+{brief}
+
+Use the selected primary gap from the Research Gap Agent to design a feasible new study.
+
+Produce:
+1. Proposed research title
+2. Refined problem statement
+3. Primary research question plus sub-questions
+4. Objectives
+5. Optional hypotheses, clearly labeled as hypotheses
+6. Proposed contribution / improvement over the reviewed work
+7. Methodology / study design
+8. Proposed system architecture or experimental procedure when relevant
+9. Data / dataset / participants needed
+10. Variables, baselines, or comparison methods
+11. Evaluation metrics
+12. Validation plan
+13. Ethical/privacy considerations where relevant
+14. Risks, limitations, and feasibility constraints
+15. Expected outcomes, clearly labeled as expected rather than achieved
+
+STRICT RULES:
+- Do not fabricate completed experiments or results.
+- Do not claim the proposed approach is better until evaluated.
+- Respect the user's requirements and constraints.
+- Separate evidence-supported rationale from design choices and assumptions.
+- Write in {language}.
+""",
+        expected_output="A feasible, academically careful research design built from the selected gap.",
+        agent=research_design_agent,
+        context=[research_task, pdf_reader_task, paper_analysis_task, research_gap_task],
+    )
 
     report_task = Task(
         description=f"""
-Create the final Questora AI research report for:
-
+Create the final Questora AI research-paper draft for:
 {topic}
 
-Use the Research Agent, PDF Reader Agent, and Academic Paper Analysis Agent outputs.
-Also use the supplied verified academic metadata below for the reference section.
+{brief}
+
+Use all five previous agent outputs and the verified academic metadata below.
 
 VERIFIED ACADEMIC PAPER METADATA:
-
 ============================================================
 {papers_text}
 ============================================================
 
 Use this structure where appropriate:
+# Proposed Research Title
 
-# {topic}
-
-## 1. Executive Summary
-## 2. Introduction
-## 3. Background
-## 4. Core Concepts
-## 5. Technologies / Architecture / Methodology
-## 6. How It Works
-## 7. Current Research Landscape
-## 8. Applications
-## 9. Advantages
-## 10. Challenges and Limitations
-## 11. Retrieved Academic Papers
-## 12. Verified Full-Text Evidence
-## 13. Literature Analysis
-## 14. Highly Cited Retrieved Papers
-## 15. Recommended Papers to Read
-## 16. Research Gaps
-## 17. Future Directions
-## 18. Suggested Research Questions
-## 19. Conclusion
-## 20. Retrieved References
+## Abstract
+## 1. Introduction
+## 2. Background
+## 3. Problem Statement
+## 4. User Research Questions and Scope
+## 5. Related Work / Literature Review
+## 6. Verified Full-Text Evidence
+## 7. Comparative Paper Analysis
+## 8. Identified Research Gap
+## 9. Proposed Contribution
+## 10. Research Objectives
+## 11. Proposed Methodology
+## 12. Proposed System Architecture / Study Procedure
+## 13. Data / Dataset / Participants
+## 14. Evaluation and Validation Plan
+## 15. Expected Outcomes (Not Yet Experimentally Verified)
+## 16. Risks, Ethics, and Limitations
+## 17. Future Work
+## 18. Conclusion
+## 19. Retrieved References
+## 20. Evidence and Methodology Note
 
 IMPORTANT EVIDENCE RULES:
-
-- List only papers actually supplied through verified scholarly metadata providers.
-- Do not invent titles, authors, journals, publication years, DOI numbers, or citation counts.
-- Clearly distinguish full-text-analyzed papers from metadata-only papers.
-- Never claim full-text analysis for a paper unless Questora actually extracted its PDF text.
-- Do not invent quotations, experiments, sample sizes, numerical results, or statistics.
-- If evidence is insufficient for a claim, state the limitation.
-- Do not add external references that were not supplied by Questora.
-
-At the end add a short methodology note explaining:
-- which metadata provider was used,
-- that Questora performed full-text analysis only for PDFs successfully extracted,
-- that metadata-only papers were not represented as fully read.
-
-Write everything in {language}.
+- Use only verified retrieved references.
+- Never invent titles, authors, journals, years, DOI values, citation counts, quotes, experiments, datasets, sample sizes, or numerical results.
+- Clearly distinguish: (A) existing literature evidence, (B) Questora's identified gap, (C) proposed new study, and (D) expected/hypothesized outcomes.
+- Never write proposed work as if it has already been implemented or validated.
+- Metadata-only papers must remain clearly marked as metadata-only.
+- If evidence is insufficient for a claim or gap, state the limitation.
+- Write in {language}.
 """,
-        expected_output=(
-            "A professional, evidence-grounded research report using only "
-            "verified Questora inputs and real academic paper metadata."
-        ),
+        expected_output="A clean research-paper draft grounded in verified literature and a clearly labeled proposed study.",
         agent=report_agent,
         context=[
             research_task,
             pdf_reader_task,
             paper_analysis_task,
+            research_gap_task,
+            research_design_task,
         ],
     )
 
@@ -1962,6 +2033,8 @@ Write everything in {language}.
         research_task,
         pdf_reader_task,
         paper_analysis_task,
+        research_gap_task,
+        research_design_task,
         report_task,
     )
 
@@ -1977,15 +2050,19 @@ def create_crew(
     papers_text: str,
     full_text_text: str,
     model_name: Optional[str] = None,
+    research_issue: str = "",
+    research_questions: str = "",
+    research_requirements: str = "",
+    research_notes: str = "",
 ) -> Crew:
-    llm = create_llm(
-        model_name=model_name
-    )
+    llm = create_llm(model_name=model_name)
 
     (
         research_agent,
         pdf_reader_agent,
         paper_analysis_agent,
+        research_gap_agent,
+        research_design_agent,
         report_agent,
     ) = create_agents(llm)
 
@@ -1993,6 +2070,8 @@ def create_crew(
         research_task,
         pdf_reader_task,
         paper_analysis_task,
+        research_gap_task,
+        research_design_task,
         report_task,
     ) = create_tasks(
         topic=topic,
@@ -2002,7 +2081,13 @@ def create_crew(
         research_agent=research_agent,
         pdf_reader_agent=pdf_reader_agent,
         paper_analysis_agent=paper_analysis_agent,
+        research_gap_agent=research_gap_agent,
+        research_design_agent=research_design_agent,
         report_agent=report_agent,
+        research_issue=research_issue,
+        research_questions=research_questions,
+        research_requirements=research_requirements,
+        research_notes=research_notes,
     )
 
     return Crew(
@@ -2010,12 +2095,16 @@ def create_crew(
             research_agent,
             pdf_reader_agent,
             paper_analysis_agent,
+            research_gap_agent,
+            research_design_agent,
             report_agent,
         ],
         tasks=[
             research_task,
             pdf_reader_task,
             paper_analysis_task,
+            research_gap_task,
+            research_design_task,
             report_task,
         ],
         process=Process.sequential,
@@ -2056,100 +2145,69 @@ def run_ai_report(
     language: str,
     papers_text: str,
     full_text_text: str,
+    research_issue: str = "",
+    research_questions: str = "",
+    research_requirements: str = "",
+    research_notes: str = "",
 ) -> str:
-    """Run the four-agent CrewAI workflow with 429/503 resilience."""
+    """Run the six-agent CrewAI workflow with 429/503 resilience."""
 
     if not GEMINI_API_KEY:
-        raise RuntimeError(
-            "GEMINI_API_KEY is not configured."
-        )
+        raise RuntimeError("GEMINI_API_KEY is not configured.")
 
     model_plan = _build_model_plan()
     retry_delays = [10, 25, 50]
     last_error: Optional[Exception] = None
 
-    for attempt, model_name in enumerate(
-        model_plan,
-        start=1,
-    ):
+    for attempt, model_name in enumerate(model_plan, start=1):
         try:
             print(
-                f"\n[Questora] Starting four-agent workflow "
-                f"(attempt {attempt}/{len(model_plan)}) "
-                f"using {model_name}..."
+                f"\
+[Questora] Starting six-agent workflow "
+                f"(attempt {attempt}/{len(model_plan)}) using {model_name}..."
             )
 
-            # Rebuild Crew every retry so failed task state is not reused.
             crew = create_crew(
                 topic=topic,
                 language=language,
                 papers_text=papers_text,
                 full_text_text=full_text_text,
                 model_name=model_name,
+                research_issue=research_issue,
+                research_questions=research_questions,
+                research_requirements=research_requirements,
+                research_notes=research_notes,
             )
 
             result = crew.kickoff()
-
-            final_report = (
-                getattr(
-                    result,
-                    "raw",
-                    None,
-                )
-                or str(result)
-            ).strip()
+            final_report = (getattr(result, "raw", None) or str(result)).strip()
 
             if not final_report:
-                raise RuntimeError(
-                    "Questora returned an empty report."
-                )
+                raise RuntimeError("Questora returned an empty report.")
 
             return final_report
 
         except Exception as error:
             last_error = error
+            print("\
+[Questora] Agent workflow error:", repr(error))
 
-            print(
-                "\n[Questora] Agent workflow error:",
-                repr(error),
-            )
-
-            # Daily quota will not recover from a short retry.
             if _is_daily_quota_error(error):
                 break
 
-            if (
-                _is_temporary_error(error)
-                and attempt < len(model_plan)
-            ):
-                fallback_delay = retry_delays[
-                    min(
-                        attempt - 1,
-                        len(retry_delays) - 1,
-                    )
-                ]
-
-                wait_seconds = _retry_seconds_from_error(
-                    error,
-                    fallback_delay,
-                )
-
+            if _is_temporary_error(error) and attempt < len(model_plan):
+                fallback_delay = retry_delays[min(attempt - 1, len(retry_delays) - 1)]
+                wait_seconds = _retry_seconds_from_error(error, fallback_delay)
                 print(
                     "[Questora] Temporary Gemini/API issue. "
                     f"Retrying in {wait_seconds} seconds..."
                 )
-
                 time.sleep(wait_seconds)
                 continue
 
             break
 
-    raise RuntimeError(
-        str(
-            last_error
-            or "Gemini workflow unavailable."
-        )
-    )
+    raise RuntimeError(str(last_error or "Gemini workflow unavailable."))
 
 
 # ============================================================
@@ -2214,6 +2272,10 @@ def build_deterministic_report(
     full_text_papers: List[Dict[str, Any]],
     provider: str,
     ai_error: Optional[Exception] = None,
+    research_issue: str = "",
+    research_questions: str = "",
+    research_requirements: str = "",
+    research_notes: str = "",
 ) -> str:
     """
     Build a report that is always safe to show.
@@ -2246,6 +2308,13 @@ def build_deterministic_report(
         f"- **Full-text PDFs successfully extracted:** {full_count}",
         f"- **Metadata-only papers:** {metadata_only}",
         f"- **Requested output language:** {language}",
+        "",
+        "## User Research Brief",
+        "",
+        f"- **Research issue / problem:** {research_issue or 'Not provided'}",
+        f"- **Research questions:** {research_questions or 'Not provided'}",
+        f"- **Requirements / constraints:** {research_requirements or 'Not provided'}",
+        f"- **Additional notes:** {research_notes or 'Not provided'}",
         "",
     ]
 
@@ -2405,6 +2474,10 @@ def build_deterministic_report(
 def run_research(
     topic: str,
     language: str = "English",
+    research_issue: str = "",
+    research_questions: str = "",
+    research_requirements: str = "",
+    research_notes: str = "",
 ) -> Dict[str, Any]:
     """
     Main Questora entry point.
@@ -2529,6 +2602,10 @@ def run_research(
                 language=language,
                 papers_text=papers_text,
                 full_text_text=full_text_text,
+                research_issue=research_issue,
+                research_questions=research_questions,
+                research_requirements=research_requirements,
+                research_notes=research_notes,
             )
 
         except Exception as error:
@@ -2566,6 +2643,10 @@ def run_research(
             full_text_papers=full_text_papers,
             provider=metadata_provider,
             ai_error=ai_error,
+            research_issue=research_issue,
+            research_questions=research_questions,
+            research_requirements=research_requirements,
+            research_notes=research_notes,
         )
 
     # --------------------------------------------------------
@@ -2610,6 +2691,13 @@ def run_research(
             if ai_error is not None
             else None
         ),
+        "research_brief": {
+            "issue": research_issue,
+            "questions": research_questions,
+            "requirements": research_requirements,
+            "notes": research_notes,
+        },
+        "agent_count": 6,
     }
 
 
